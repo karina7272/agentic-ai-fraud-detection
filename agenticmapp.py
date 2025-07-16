@@ -231,17 +231,15 @@ if uploaded_file:
     st.pyplot(fig)
     plt.close(fig)
 
-    # SHAP safe
+    # SHAP safe: Use exactly X_test
     st.write("SHAP Summary Plot (Random Forest)")
-    shap_sample_idx = X_test.sample(500, random_state=42).index
-    shap_sample = X.loc[shap_sample_idx].reindex(columns=X.columns, fill_value=0)
     explainer = shap.TreeExplainer(rf)
-    shap_values = explainer.shap_values(shap_sample)
+    shap_values = explainer.shap_values(X_test)
+
     fig_shap = plt.figure()
     shap.summary_plot(
         shap_values[1],
-        shap_sample,
-        feature_names=shap_sample.columns,
+        X_test,
         show=False
     )
     st.pyplot(fig_shap)
