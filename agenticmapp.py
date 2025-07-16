@@ -58,7 +58,6 @@ if uploaded_file:
     st.subheader("Step 1: Perception Module - Data Preprocessing")
 
     # Class Balance
-    st.write("Class Balance")
     fig, ax = plt.subplots()
     df["IsFraud"].value_counts().plot(kind="bar", color=["#3498db","#e74c3c"], ax=ax)
     ax.set_title("Fraud vs Non-Fraud Counts")
@@ -68,7 +67,6 @@ if uploaded_file:
     plt.close(fig)
 
     # Amount Distribution
-    st.write("Amount Distribution by Class")
     fig, ax = plt.subplots()
     for label in [0,1]:
         subset = df[df["IsFraud"]==label]["Amount"]
@@ -84,7 +82,7 @@ if uploaded_file:
     labels_bins = ["<$1k","$1k-5k","$5k-10k","$10k-20k","$20k-50k"]
     df["AmountBucket"] = pd.cut(df["Amount"], bins=bins, labels=labels_bins)
     df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
-    df = pd.get_dummies(df, columns=["AmountBucket"], drop_first=True)
+    df = pd.get_dummies(df, columns=["AmountBucket"], drop_first=False)
     df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
     feature_cols = ["Amount","DayOfMonth","PriorFlag","VendorCode","Prior_Vendor"] + \
         [c for c in df.columns if c.startswith("AmountBucket_")]
@@ -129,7 +127,6 @@ if uploaded_file:
     nn_pred = nn.predict(X_test_scaled)
 
     # ROC Curves
-    st.write("ROC Curves for All Models")
     fig, ax = plt.subplots(figsize=(8,6))
     for name, probs in zip(
         ["Logistic Regression","Random Forest","XGBoost","Neural Network"],
@@ -229,10 +226,10 @@ if uploaded_file:
     st.pyplot(fig)
     plt.close(fig)
 
-    # SHAP with sample
+    # SHAP with safe reindexing
     st.write("SHAP Summary Plot (Random Forest)")
     shap_sample_idx = X_test.sample(500, random_state=42).index
-    shap_sample = X.loc[shap_sample_idx]
+    shap_sample = X.loc[shap_sample_idx].reindex(columns=X.columns, fill_value=0)
     explainer = shap.TreeExplainer(rf)
     shap_values = explainer.shap_values(shap_sample)
     fig_shap = plt.figure()
@@ -248,52 +245,6 @@ if uploaded_file:
     # AI Action Next Steps Diagram
     st.subheader("AI Action Next Steps for Auditors")
     st.image("https://i.imgur.com/UCFlBQr.png", caption="AI Action → Auditor Next Steps")
-
-    # ----------------------------
-    st.subheader("Predictions and Rule-Based Explanations")
-
-    X_test_df = X_test.copy()
-    X_test_df["Amount"] = df.loc[X_test_df.index,"Amount"]
-    X_test_df["VendorCategory"] = df.loc[X_test_df.index,"VendorCategory"]
-    X_test_df["PriorFlag"] = df.loc[X_test_df.index,"PriorFlag"]
-    X_test_df["RF_Prob"] = rf_probs
-
-    def explain(row):
-        reasons=[]
-        if row["Amount"]>20000:
-            reasons.append("high amount")
-        if row["PriorFlag"]==1:
-            reasons.append("prior flag")
-        if row["VendorCategory"] in ["Travel","Consulting"]:
-            reasons.append("high-risk vendor")
-        return "This transaction was flagged due to: " + ", ".join(reasons) if reasons else "No unusual factors detected."
-    X_test_df["Explanation"] = X_test_df.apply(explain,axis=1)
-    st.dataframe(X_test_df[["Amount","VendorCategory","PriorFlag","RF_Prob","Explanation"]])
-
-    csv = X_test_df.to_csv(index=False).encode()
-    st.download_button("Download Explanations CSV", csv, "Agentic_Model_Predictions.csv", "text/csv")
-
-    # ----------------------------
-    st.subheader("AI Validation Dashboard")
-    st.markdown("""
-✅ **Data Integrity Validation**
-- Verified no missing values, correct ranges, class balance
-
-✅ **Model Performance Validation**
-- 4 classifiers with ROC, AUC, confusion matrices
-
-✅ **Interpretability Validation**
-- SHAP values, feature importances, explanations
-
-✅ **Agentic AI Policy Validation**
-- Q-learning heatmap and reward logic
-
-✅ **Generative Explanation Validation**
-- Rule-based explanations reviewed
-
-✅ **Reproducibility**
-- Fixed random seeds, downloadable outputs
-""")
 
 else:
     st.info("Awaiting CSV file upload.")
