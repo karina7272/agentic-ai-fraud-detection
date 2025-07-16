@@ -102,28 +102,34 @@ if uploaded_file:
 
     st.write("Training Logistic Regression, Random Forest, XGBoost, Neural Network")
 
-    # Train Models
+    # Logistic Regression
     lr = LogisticRegression(max_iter=500)
     lr.fit(X_train_scaled, y_train)
 
+    # Random Forest
     rf = RandomForestClassifier(n_estimators=100, random_state=42)
     rf.fit(X_train, y_train)
 
-    xgb_model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss")
-    xgb_model.fit(X_train, y_train)
+    # XGBoost: convert to numeric arrays to avoid errors
+    X_train_np = X_train.values
+    X_test_np = X_test.values
 
+    xgb_model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss")
+    xgb_model.fit(X_train_np, y_train)
+
+    # Neural Network
     nn = MLPClassifier(hidden_layer_sizes=(32,16), max_iter=100)
     nn.fit(X_train_scaled, y_train)
 
     # Predictions
     lr_probs = lr.predict_proba(X_test_scaled)[:,1]
     rf_probs = rf.predict_proba(X_test)[:,1]
-    xgb_probs = xgb_model.predict_proba(X_test)[:,1]
+    xgb_probs = xgb_model.predict_proba(X_test_np)[:,1]
     nn_probs = nn.predict_proba(X_test_scaled)[:,1]
 
     lr_pred = lr.predict(X_test_scaled)
     rf_pred = rf.predict(X_test)
-    xgb_pred = xgb_model.predict(X_test)
+    xgb_pred = xgb_model.predict(X_test_np)
     nn_pred = nn.predict(X_test_scaled)
 
     # ROC Curves
@@ -217,7 +223,6 @@ if uploaded_file:
     # ----------------------------
     st.subheader("Step 4: Execution Module - Interpretability")
 
-    # Feature Importance
     st.write("Random Forest Feature Importance")
     importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
     fig, ax = plt.subplots()
@@ -226,7 +231,7 @@ if uploaded_file:
     st.pyplot(fig)
     plt.close(fig)
 
-    # SHAP with safe reindexing
+    # SHAP safe
     st.write("SHAP Summary Plot (Random Forest)")
     shap_sample_idx = X_test.sample(500, random_state=42).index
     shap_sample = X.loc[shap_sample_idx].reindex(columns=X.columns, fill_value=0)
@@ -242,7 +247,7 @@ if uploaded_file:
     st.pyplot(fig_shap)
     plt.close(fig_shap)
 
-    # AI Action Next Steps Diagram
+    # AI Action Next Steps
     st.subheader("AI Action Next Steps for Auditors")
     st.image("https://i.imgur.com/UCFlBQr.png", caption="AI Action → Auditor Next Steps")
 
