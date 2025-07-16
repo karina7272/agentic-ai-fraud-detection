@@ -222,7 +222,12 @@ if uploaded_file:
     explainer = shap.TreeExplainer(rf)
     shap_values = explainer.shap_values(X_test)
     fig_shap = plt.figure()
-    shap.summary_plot(shap_values[1], X_test, show=False)
+    shap.summary_plot(
+        shap_values[1],
+        X_test.values,
+        feature_names=X_test.columns,
+        show=False
+    )
     st.pyplot(fig_shap)
 
     # ----------------------------
