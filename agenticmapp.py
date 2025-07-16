@@ -60,11 +60,12 @@ if uploaded_file:
     # Class Balance
     st.write("Class Balance")
     fig, ax = plt.subplots()
-    df["IsFraud"].value_counts().plot(kind="bar", color=["#3498db","#e74c3c"])
-    plt.title("Fraud vs Non-Fraud Counts")
-    plt.ylabel("Count")
-    plt.xticks([0,1],["Non-Fraud","Fraud"], rotation=0)
+    df["IsFraud"].value_counts().plot(kind="bar", color=["#3498db","#e74c3c"], ax=ax)
+    ax.set_title("Fraud vs Non-Fraud Counts")
+    ax.set_ylabel("Count")
+    ax.set_xticklabels(["Non-Fraud","Fraud"], rotation=0)
     st.pyplot(fig)
+    plt.close(fig)
 
     # Amount Distribution
     st.write("Amount Distribution by Class")
@@ -72,10 +73,11 @@ if uploaded_file:
     for label in [0,1]:
         subset = df[df["IsFraud"]==label]["Amount"]
         ax.hist(subset, bins=50, alpha=0.5, label="Fraud" if label==1 else "Non-Fraud")
-    plt.xlabel("Transaction Amount ($)")
-    plt.ylabel("Frequency")
-    plt.legend()
+    ax.set_xlabel("Transaction Amount ($)")
+    ax.set_ylabel("Frequency")
+    ax.legend()
     st.pyplot(fig)
+    plt.close(fig)
 
     # Feature Engineering
     bins = [0,1000,5000,10000,20000,50000]
@@ -128,20 +130,21 @@ if uploaded_file:
 
     # ROC Curves
     st.write("ROC Curves for All Models")
-    plt.figure(figsize=(8,6))
+    fig, ax = plt.subplots(figsize=(8,6))
     for name, probs in zip(
         ["Logistic Regression","Random Forest","XGBoost","Neural Network"],
         [lr_probs, rf_probs, xgb_probs, nn_probs]
     ):
         fpr, tpr, _ = roc_curve(y_test, probs)
         auc = roc_auc_score(y_test, probs)
-        plt.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
-    plt.plot([0,1],[0,1],"k--")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.legend()
-    plt.title("ROC Curves")
-    st.pyplot(plt)
+        ax.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
+    ax.plot([0,1],[0,1],"k--")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.legend()
+    ax.set_title("ROC Curves")
+    st.pyplot(fig)
+    plt.close(fig)
 
     # Confusion Matrices
     st.write("Confusion Matrices")
@@ -151,19 +154,25 @@ if uploaded_file:
         "XGBoost": xgb_pred,
         "Neural Network": nn_pred
     }
-    fig, axes = plt.subplots(2,2, figsize=(10,8))
+    fig, axes = plt.subplots(2,2, figsize=(12,10))
     axes = axes.flatten()
     for ax, (name, preds) in zip(axes, models_preds.items()):
         cm = confusion_matrix(y_test, preds)
         im = ax.imshow(cm, cmap="Blues")
-        ax.set_title(name)
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("Actual")
+        ax.set_title(name, fontsize=12, pad=10)
+        ax.set_xlabel("Predicted", labelpad=10)
+        ax.set_ylabel("Actual", labelpad=10)
+        ax.set_xticks([0,1])
+        ax.set_yticks([0,1])
+        ax.set_xticklabels(["Non-Fraud","Fraud"])
+        ax.set_yticklabels(["Non-Fraud","Fraud"])
         for i in range(2):
             for j in range(2):
-                ax.text(j,i,cm[i,j],ha="center",va="center",color="black")
+                ax.text(j,i,cm[i,j],ha="center",va="center",color="black",fontsize=11)
+    fig.tight_layout()
     fig.colorbar(im, ax=axes, shrink=0.6)
     st.pyplot(fig)
+    plt.close(fig)
 
     # ----------------------------
     st.subheader("Step 3: Planning Module - Q-Learning Policy")
@@ -196,15 +205,17 @@ if uploaded_file:
             q_table.loc[state, action] = old_q + alpha*(r + gamma*max_q - old_q)
 
     pivot = q_table["Flag"].unstack()
-    plt.figure(figsize=(6,6))
-    plt.title("Q-Value Heatmap (Flag Action)")
-    plt.xlabel("PriorFlag")
-    plt.ylabel("AmountBin")
-    plt.imshow(pivot, cmap="viridis")
-    plt.colorbar(label="Q-Value")
-    plt.xticks([0,1],[0,1])
-    plt.yticks(range(len(labels_bins)),labels_bins)
-    st.pyplot(plt)
+    fig, ax = plt.subplots(figsize=(6,6))
+    c = ax.imshow(pivot, cmap="viridis")
+    ax.set_title("Q-Value Heatmap (Flag Action)")
+    ax.set_xlabel("PriorFlag")
+    ax.set_ylabel("AmountBin")
+    ax.set_xticks([0,1])
+    ax.set_yticks(range(len(labels_bins)))
+    ax.set_yticklabels(labels_bins)
+    fig.colorbar(c, ax=ax, label="Q-Value")
+    st.pyplot(fig)
+    plt.close(fig)
 
     # ----------------------------
     st.subheader("Step 4: Execution Module - Interpretability")
@@ -214,21 +225,28 @@ if uploaded_file:
     importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
     fig, ax = plt.subplots()
     importances.plot(kind="barh", ax=ax)
-    plt.title("Feature Importances")
+    ax.set_title("Feature Importances")
     st.pyplot(fig)
+    plt.close(fig)
 
-    # SHAP
+    # SHAP with sample
     st.write("SHAP Summary Plot (Random Forest)")
+    shap_sample = X_test.sample(500, random_state=42)
     explainer = shap.TreeExplainer(rf)
-    shap_values = explainer.shap_values(X_test)
+    shap_values = explainer.shap_values(shap_sample)
     fig_shap = plt.figure()
     shap.summary_plot(
         shap_values[1],
-        X_test.values,
-        feature_names=X_test.columns,
+        shap_sample.values,
+        feature_names=shap_sample.columns,
         show=False
     )
     st.pyplot(fig_shap)
+    plt.close(fig_shap)
+
+    # AI Action Next Steps Diagram
+    st.subheader("AI Action Next Steps for Auditors")
+    st.image("https://i.imgur.com/UCFlBQr.png", caption="AI Action → Auditor Next Steps")
 
     # ----------------------------
     st.subheader("Predictions and Rule-Based Explanations")
