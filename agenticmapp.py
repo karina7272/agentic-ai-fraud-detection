@@ -231,13 +231,14 @@ if uploaded_file:
 
     # SHAP with sample
     st.write("SHAP Summary Plot (Random Forest)")
-    shap_sample = X_test.sample(500, random_state=42)
+    shap_sample_idx = X_test.sample(500, random_state=42).index
+    shap_sample = X.loc[shap_sample_idx]
     explainer = shap.TreeExplainer(rf)
     shap_values = explainer.shap_values(shap_sample)
     fig_shap = plt.figure()
     shap.summary_plot(
         shap_values[1],
-        shap_sample.values,
+        shap_sample,
         feature_names=shap_sample.columns,
         show=False
     )
