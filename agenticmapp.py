@@ -7,8 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1inCIg9OqOxapjAvYeTRMi23REbWwiZSN
 """
 
-!pip install streamlit pyngrok
-
 # Streamlit Agentic AI Fraud Detection App
 
 import streamlit as st
