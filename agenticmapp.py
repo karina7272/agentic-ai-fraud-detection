@@ -7,159 +7,100 @@ Original file is located at
     https://colab.research.google.com/drive/1inCIg9OqOxapjAvYeTRMi23REbWwiZSN
 """
 
-# Streamlit Agentic AI Fraud Detection App
-
+# Agentic AI Fraud Detection Application
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, confusion_matrix
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Set page config
-st.set_page_config(
-    page_title="Agentic AI Fraud Detection",
-    layout="wide",
-)
+st.set_page_config(page_title="Agentic AI Fraud Detection", layout="wide")
 
-# Custom CSS for business background
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background-image: url('https://images.unsplash.com/photo-1556761175-4b46a572b786?fit=crop&w=1950&q=80');
-        background-size: cover;
-        background-attachment: fixed;
-    }
-    .css-18e3th9 {
-        background-color: rgba(255, 255, 255, 0.85);
-        padding: 1rem;
-        border-radius: 0.5rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# --- Custom CSS for light background and better contrast ---
+st.markdown("""
+<style>
+body {
+    background-color: #f4f6f9;
+    color: #333333;
+}
+h1, h2, h3 {
+    color: #2c3e50;
+}
+.stButton button {
+    background-color: #2c3e50;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Page title and subtitle
+# --- App Title ---
 st.title("Agentic AI Fraud Detection Application")
-st.markdown(
-    "<h4 style='text-align: center; color: #333;'>Empowering Accountants with Explainable AI for Fraud Detection</h4>",
-    unsafe_allow_html=True
-)
+st.markdown("Empowering Accountants with Explainable AI for Fraud Detection")
 
-# Instructions
-st.write("""
-Upload a CSV file containing your accounting transactions.
-Columns must include:
-- EntryID
-- Amount
-- VendorCategory
-- DayOfMonth
-- PriorFlag
-""")
-
-# Upload file
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+# --- File Upload ---
+uploaded_file = st.file_uploader("Upload a CSV file (Columns: EntryID, Amount, VendorCategory, DayOfMonth, PriorFlag, IsFraud)", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-
     st.subheader("Raw Data Sample")
     st.dataframe(df.head())
 
-    # Feature engineering
-    bins = [0,1000,5000,10000,20000,50000]
-    labels = ["<$1k","$1k-5k","$5k-10k","$10k-20k","$20k-50k"]
-    df["AmountBucket"] = pd.cut(df["Amount"], bins=bins, labels=labels)
-    df["VendorCode"] = pd.Categorical(df["VendorCategory"]).codes
-    df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
-
-    # Ensure IsFraud column exists
-    if "IsFraud" not in df.columns:
-        df["IsFraud"] = 0
-
-    X = df[["Amount","DayOfMonth","PriorFlag","VendorCode","Prior_Vendor"]]
+    # --- Preprocessing ---
+    st.subheader("Step 1: Perception Module - Data Preprocessing")
+    df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
+    X = df[["Amount", "VendorCode", "DayOfMonth", "PriorFlag"]]
     y = df["IsFraud"]
 
-    # Train Random Forest
-    rf = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf.fit(X, y)
-    fraud_probs = rf.predict_proba(X)[:,1]
-    df["FraudProbability"] = fraud_probs
+    # --- Train/Test Split ---
+    train_size = int(0.8 * len(df))
+    X_train, y_train = X.iloc[:train_size], y.iloc[:train_size]
+    X_test, y_test = X.iloc[train_size:], y.iloc[train_size:]
 
-    # Show AUC if labels exist
-    st.subheader("Model Performance (if labels exist)")
-    if df["IsFraud"].nunique() > 1:
-        auc = roc_auc_score(y, fraud_probs)
-        st.write(f"AUC: {auc:.3f}")
+    # --- Model Training (Policy Learning) ---
+    st.subheader("Step 2: Policy Learning - Random Forest Classifier")
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
 
-    # Q-learning Agentic AI
-    q_table = {}
-    alpha = 0.1
-    gamma = 0.9
+    # --- Performance Metrics ---
+    auc = roc_auc_score(y_test, y_proba)
+    cm = confusion_matrix(y_test, y_pred)
 
-    for _, row in df.iterrows():
-        state = (row["PriorFlag"], row["VendorCode"])
-        action = "Flag" if row["PriorFlag"] else "Approve"
-        if action=="Flag" and row["IsFraud"]:
-            reward = +1
-        elif action=="Approve" and row["IsFraud"]:
-            reward = -1
-        else:
-            reward = 0
-        q_table[state] = q_table.get(state,0) + alpha*(reward - q_table.get(state,0))
+    st.markdown(f"**AUC:** {auc:.3f}")
+    st.markdown("**Confusion Matrix:**")
+    st.write(cm)
 
-    # Convert Q-table to DataFrame
-    q_df = pd.DataFrame([
-        {"PriorFlag":k[0], "VendorCode":k[1], "QValue":v}
-        for k,v in q_table.items()
-    ])
+    # --- Q-Value Heatmap (Planning Module) ---
+    st.subheader("Step 3: Planning Module - Q-Value Heatmap")
+    df["AmountBucket"] = pd.cut(df["Amount"], bins=[0,5000,15000,50000], labels=["Low","Medium","High"])
+    q_values = df.groupby(["VendorCode","PriorFlag"])["IsFraud"].mean().reset_index().rename(columns={"IsFraud":"QValue"})
 
-    # Safely pivot with pivot_table()
-    pivot = q_df.pivot_table(
-        index="VendorCode",
-        columns="PriorFlag",
-        values="QValue",
-        fill_value=0
-    )
-
-    # Plot heatmap
-    st.subheader("Agentic AI Policy Heatmap (Q-values)")
+    heatmap_data = q_values.pivot(index="VendorCode", columns="PriorFlag", values="QValue")
     fig, ax = plt.subplots()
-    cax = ax.matshow(pivot, cmap="viridis")
-    fig.colorbar(cax)
-    ax.set_xlabel("Prior Flag (0=No, 1=Yes)")
-    ax.set_ylabel("Vendor Code")
-    ax.set_title("Q-Value Heatmap")
+    sns.heatmap(heatmap_data, annot=True, cmap="YlGnBu", ax=ax)
+    plt.title("Q-Value Heatmap by Vendor and PriorFlag")
     st.pyplot(fig)
 
-    # Generate explanations
-    def explain(row):
-        reasons=[]
-        if row["PriorFlag"]:
-            reasons.append("prior suspicious activity")
-        if row["Amount"] > 20000:
-            reasons.append("high transaction amount")
-        if row["VendorCategory"] in ["Consulting","Travel"]:
-            reasons.append("higher-risk vendor")
-        if reasons:
-            return "Flagged due to: " + ", ".join(reasons)
-        else:
-            return "No risk factors detected."
+    # --- Feature Importance ---
+    st.subheader("Step 4: Execution Module - Feature Importance")
+    feat_importances = pd.Series(model.feature_importances_, index=X.columns)
+    fig2, ax2 = plt.subplots()
+    feat_importances.sort_values().plot(kind="barh", ax=ax2)
+    plt.title("Feature Importance")
+    st.pyplot(fig2)
 
-    df["Explanation"] = df.apply(explain, axis=1)
-
-    # Show predictions
-    st.subheader("Predictions and Explanations")
-    st.dataframe(df[["EntryID","FraudProbability","Explanation"]])
-
-    # Download results
+    # --- Download Prediction Results ---
+    st.subheader("Step 5: Downloadable Outputs")
+    df["PredictedFraudProb"] = model.predict_proba(X)[:,1]
     csv = df.to_csv(index=False).encode()
-    st.download_button(
-        label="Download Results CSV",
-        data=csv,
-        file_name="fraud_detection_results.csv",
-        mime="text/csv"
-    )
+    st.download_button("Download Results CSV", csv, "fraud_detection_results.csv", "text/csv")
+
+else:
+    st.info("Awaiting CSV file upload.")
+
+# --- Footer ---
+st.markdown("---")
+st.caption("© 2024 Agentic AI Research | Empowering Autonomous Accounting Systems")
