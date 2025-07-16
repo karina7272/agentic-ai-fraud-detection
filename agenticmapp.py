@@ -8,99 +8,172 @@ Original file is located at
 """
 
 # Agentic AI Fraud Detection Application
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, confusion_matrix
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-st.set_page_config(page_title="Agentic AI Fraud Detection", layout="wide")
+# Page config
+st.set_page_config(
+    page_title="Agentic AI Fraud Detection",
+    layout="wide"
+)
 
-# --- Custom CSS for light background and better contrast ---
+# Custom CSS for light blue background and logo
 st.markdown("""
 <style>
-body {
-    background-color: #f4f6f9;
-    color: #333333;
+/* Light blue background */
+.stApp {
+    background-color: #eaf4fb;
+    padding-top: 70px; /* Space for the logo */
 }
+
+/* Logo in top left corner */
+.header-logo {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 999;
+}
+
+/* White background behind widgets for readability */
+.css-18e3th9 {
+    background-color: rgba(255, 255, 255, 0.95);
+    padding: 1rem;
+    border-radius: 0.5rem;
+}
+
+/* Title styling */
 h1, h2, h3 {
     color: #2c3e50;
 }
-.stButton button {
-    background-color: #2c3e50;
-    color: white;
-}
 </style>
+
+<!-- Business AI Icon -->
+<div class="header-logo">
+    <img src="https://cdn-icons-png.flaticon.com/512/3379/3379050.png" width="50" />
+</div>
 """, unsafe_allow_html=True)
 
-# --- App Title ---
+# Title
 st.title("Agentic AI Fraud Detection Application")
-st.markdown("Empowering Accountants with Explainable AI for Fraud Detection")
+st.markdown(
+    "Empowering Accountants with Explainable AI for Fraud Detection"
+)
 
-# --- File Upload ---
-uploaded_file = st.file_uploader("Upload a CSV file (Columns: EntryID, Amount, VendorCategory, DayOfMonth, PriorFlag, IsFraud)", type="csv")
+# File uploader
+uploaded_file = st.file_uploader(
+    "Upload a CSV file (Columns: EntryID, Amount, VendorCategory, DayOfMonth, PriorFlag, IsFraud)",
+    type="csv"
+)
 
 if uploaded_file:
+    # Read CSV
     df = pd.read_csv(uploaded_file)
     st.subheader("Raw Data Sample")
     st.dataframe(df.head())
 
-    # --- Preprocessing ---
+    # === STEP 1: Perception Module ===
     st.subheader("Step 1: Perception Module - Data Preprocessing")
     df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
     X = df[["Amount", "VendorCode", "DayOfMonth", "PriorFlag"]]
-    y = df["IsFraud"]
+    if "IsFraud" in df.columns:
+        y = df["IsFraud"]
+    else:
+        y = pd.Series(np.zeros(len(df)), name="IsFraud")
 
-    # --- Train/Test Split ---
+    # Train/Test split
     train_size = int(0.8 * len(df))
     X_train, y_train = X.iloc[:train_size], y.iloc[:train_size]
     X_test, y_test = X.iloc[train_size:], y.iloc[train_size:]
 
-    # --- Model Training (Policy Learning) ---
+    # === STEP 2: Policy Learning Module ===
     st.subheader("Step 2: Policy Learning - Random Forest Classifier")
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     y_proba = model.predict_proba(X_test)[:, 1]
 
-    # --- Performance Metrics ---
-    auc = roc_auc_score(y_test, y_proba)
+    # Metrics
+    auc = roc_auc_score(y_test, y_proba) if y_test.nunique() > 1 else None
     cm = confusion_matrix(y_test, y_pred)
 
-    st.markdown(f"**AUC:** {auc:.3f}")
+    if auc is not None:
+        st.markdown(f"**AUC:** {auc:.3f}")
     st.markdown("**Confusion Matrix:**")
     st.write(cm)
 
-    # --- Q-Value Heatmap (Planning Module) ---
+    # === STEP 3: Planning Module - Q-Value Heatmap ===
     st.subheader("Step 3: Planning Module - Q-Value Heatmap")
     df["AmountBucket"] = pd.cut(df["Amount"], bins=[0,5000,15000,50000], labels=["Low","Medium","High"])
-    q_values = df.groupby(["VendorCode","PriorFlag"])["IsFraud"].mean().reset_index().rename(columns={"IsFraud":"QValue"})
+    q_values = (
+        df.groupby(["VendorCode","PriorFlag"])["IsFraud"]
+        .mean()
+        .reset_index()
+        .rename(columns={"IsFraud":"QValue"})
+    )
 
-    heatmap_data = q_values.pivot(index="VendorCode", columns="PriorFlag", values="QValue")
+    # Pivot safely
+    pivot = q_values.pivot_table(
+        index="VendorCode",
+        columns="PriorFlag",
+        values="QValue",
+        fill_value=0
+    )
+
     fig, ax = plt.subplots()
-    sns.heatmap(heatmap_data, annot=True, cmap="YlGnBu", ax=ax)
-    plt.title("Q-Value Heatmap by Vendor and PriorFlag")
+    cax = ax.matshow(pivot, cmap="YlGnBu")
+    fig.colorbar(cax)
+    ax.set_xlabel("Prior Flag (0=No, 1=Yes)")
+    ax.set_ylabel("Vendor Code")
+    ax.set_title("Q-Value Heatmap")
     st.pyplot(fig)
 
-    # --- Feature Importance ---
+    # === STEP 4: Execution Module - Feature Importance ===
     st.subheader("Step 4: Execution Module - Feature Importance")
-    feat_importances = pd.Series(model.feature_importances_, index=X.columns)
+    feat_importances = pd.Series(
+        model.feature_importances_, index=X.columns
+    )
     fig2, ax2 = plt.subplots()
     feat_importances.sort_values().plot(kind="barh", ax=ax2)
     plt.title("Feature Importance")
     st.pyplot(fig2)
 
-    # --- Download Prediction Results ---
-    st.subheader("Step 5: Downloadable Outputs")
+    # Generate explanations
+    def explain(row):
+        reasons=[]
+        if row["PriorFlag"]:
+            reasons.append("prior suspicious activity")
+        if row["Amount"] > 20000:
+            reasons.append("high transaction amount")
+        if row["VendorCategory"] in ["Consulting","Travel"]:
+            reasons.append("higher-risk vendor")
+        if reasons:
+            return "Flagged due to: " + ", ".join(reasons)
+        else:
+            return "No risk factors detected."
+    df["Explanation"] = df.apply(explain, axis=1)
+
+    # Predictions and Explanations Table
+    st.subheader("Predictions and Explanations")
     df["PredictedFraudProb"] = model.predict_proba(X)[:,1]
+    st.dataframe(df[["EntryID","PredictedFraudProb","Explanation"]])
+
+    # Download results
     csv = df.to_csv(index=False).encode()
-    st.download_button("Download Results CSV", csv, "fraud_detection_results.csv", "text/csv")
+    st.download_button(
+        "Download Results CSV",
+        csv,
+        "fraud_detection_results.csv",
+        "text/csv"
+    )
 
 else:
     st.info("Awaiting CSV file upload.")
 
-# --- Footer ---
+# Footer
 st.markdown("---")
 st.caption("© 2024 Agentic AI Research | Empowering Autonomous Accounting Systems")
