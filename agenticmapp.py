@@ -17,8 +17,37 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt
 
-# Title
+# Set page config
+st.set_page_config(
+    page_title="Agentic AI Fraud Detection",
+    layout="wide",
+)
+
+# Custom CSS for business background
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-image: url('https://images.unsplash.com/photo-1556761175-4b46a572b786?fit=crop&w=1950&q=80');
+        background-size: cover;
+        background-attachment: fixed;
+    }
+    .css-18e3th9 {
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 1rem;
+        border-radius: 0.5rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Page title and subtitle
 st.title("Agentic AI Fraud Detection Application")
+st.markdown(
+    "<h4 style='text-align: center; color: #333;'>Empowering Accountants with Explainable AI for Fraud Detection</h4>",
+    unsafe_allow_html=True
+)
 
 # Instructions
 st.write("""
@@ -34,7 +63,6 @@ Columns must include:
 # Upload file
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
-# Process file if uploaded
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
@@ -48,7 +76,7 @@ if uploaded_file:
     df["VendorCode"] = pd.Categorical(df["VendorCategory"]).codes
     df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
 
-    # Features and target (dummy labels if real labels are missing)
+    # Ensure IsFraud column exists
     if "IsFraud" not in df.columns:
         df["IsFraud"] = 0
 
@@ -61,31 +89,18 @@ if uploaded_file:
     fraud_probs = rf.predict_proba(X)[:,1]
     df["FraudProbability"] = fraud_probs
 
+    # Show AUC if labels exist
     st.subheader("Model Performance (if labels exist)")
     if df["IsFraud"].nunique() > 1:
         auc = roc_auc_score(y, fraud_probs)
         st.write(f"AUC: {auc:.3f}")
 
-    # Explanations
-    def explain(row):
-        reasons=[]
-        if row["PriorFlag"]:
-            reasons.append("prior suspicious activity")
-        if row["Amount"] > 20000:
-            reasons.append("high transaction amount")
-        if row["VendorCategory"] in ["Consulting","Travel"]:
-            reasons.append("higher-risk vendor")
-        if reasons:
-            return "Flagged due to: " + ", ".join(reasons)
-        else:
-            return "No risk factors detected."
-    df["Explanation"] = df.apply(explain, axis=1)
-
-    # Agentic AI Q-learning
+    # Q-learning Agentic AI
     q_table = {}
     alpha = 0.1
     gamma = 0.9
-    for i, row in df.iterrows():
+
+    for _, row in df.iterrows():
         state = (row["PriorFlag"], row["VendorCode"])
         action = "Flag" if row["PriorFlag"] else "Approve"
         if action=="Flag" and row["IsFraud"]:
@@ -102,9 +117,16 @@ if uploaded_file:
         for k,v in q_table.items()
     ])
 
-    # Show Q-values heatmap
+    # Safely pivot with pivot_table()
+    pivot = q_df.pivot_table(
+        index="VendorCode",
+        columns="PriorFlag",
+        values="QValue",
+        fill_value=0
+    )
+
+    # Plot heatmap
     st.subheader("Agentic AI Policy Heatmap (Q-values)")
-    pivot = q_df.pivot("VendorCode","PriorFlag","QValue")
     fig, ax = plt.subplots()
     cax = ax.matshow(pivot, cmap="viridis")
     fig.colorbar(cax)
@@ -112,6 +134,22 @@ if uploaded_file:
     ax.set_ylabel("Vendor Code")
     ax.set_title("Q-Value Heatmap")
     st.pyplot(fig)
+
+    # Generate explanations
+    def explain(row):
+        reasons=[]
+        if row["PriorFlag"]:
+            reasons.append("prior suspicious activity")
+        if row["Amount"] > 20000:
+            reasons.append("high transaction amount")
+        if row["VendorCategory"] in ["Consulting","Travel"]:
+            reasons.append("higher-risk vendor")
+        if reasons:
+            return "Flagged due to: " + ", ".join(reasons)
+        else:
+            return "No risk factors detected."
+
+    df["Explanation"] = df.apply(explain, axis=1)
 
     # Show predictions
     st.subheader("Predictions and Explanations")
