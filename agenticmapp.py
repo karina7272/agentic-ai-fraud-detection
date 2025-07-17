@@ -7,139 +7,143 @@ Original file is located at
     https://colab.research.google.com/drive/1inCIg9OqOxapjAvYeTRMi23REbWwiZSN
 """
 
-# Agentic AI Fraud Detection (Colab Version with SHAP and Rule-Based Explanations)
+# Agentic AI Fraud Detection Application (Streamlit-compatible, SHAP Fixed)
 
+import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import roc_auc_score, roc_curve
-
+import matplotlib.pyplot as plt
 import xgboost as xgb
 import shap
-from google.colab import files
-from IPython.display import display
 
-# Step 1: Upload CSV
-uploaded = files.upload()
-df = pd.read_csv(next(iter(uploaded)))
+# Streamlit UI setup
+st.set_page_config(page_title="Agentic AI Fraud Detection", layout="wide")
 
-# Step 2: Preprocessing
-print("✅ Data Uploaded. Sample:")
-display(df.head())
+st.markdown("""
+<style>
+.stApp {background-color: #eaf4fb; padding-top:70px;}
+.header-logo {position: fixed; top:10px; left:10px; z-index:999;}
+.css-18e3th9 {background-color: rgba(255,255,255,0.95); padding:1rem; border-radius:0.5rem;}
+h1, h2, h3 {color:#2c3e50;}
+</style>
+<div class="header-logo">
+    <img src="https://cdn-icons-png.flaticon.com/512/3379/3379050.png" width="50"/>
+</div>
+""", unsafe_allow_html=True)
 
-print("\n🔄 Preprocessing...")
+st.title("Agentic AI Fraud Detection Application")
+st.markdown("**Empowering Accountants with Explainable AI for Fraud Detection**")
 
-df["AmountBucket"] = pd.cut(df["Amount"], bins=[0, 5000, 20000, np.inf],
-                             labels=["Low (<$5k)", "Medium ($5k–$20k)", "High (>$20k)"])
-df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
-df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
-df = pd.get_dummies(df, columns=["AmountBucket"], drop_first=False)
+# Upload CSV
+uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
 
-X = df[["Amount", "DayOfMonth", "PriorFlag", "VendorCode", "Prior_Vendor"] +
-       [c for c in df.columns if "AmountBucket_" in c]]
-y = df["IsFraud"]
-X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y,
-                                                    test_size=0.2, random_state=42)
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.subheader("Raw Data Sample")
+    st.dataframe(df.head())
 
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+    # Step 1: Preprocessing
+    st.subheader("Step 1: Perception Module - Data Preprocessing")
+    df["AmountBucket"] = pd.cut(df["Amount"], bins=[0,5000,20000,np.inf], labels=["Low (<$5k)","Medium ($5k–$20k)","High (>$20k)"])
+    df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
+    df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
+    df = pd.get_dummies(df, columns=["AmountBucket"], drop_first=False)
 
-# Step 3: Train Models
-print("\n🚀 Training Models...")
+    X = df[["Amount","DayOfMonth","PriorFlag","VendorCode","Prior_Vendor"] + [c for c in df.columns if "AmountBucket_" in c]]
+    y = df["IsFraud"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-models = {
-    "Logistic Regression": LogisticRegression(max_iter=500),
-    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
-    "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss"),
-    "Neural Network": MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=100)
-}
+    # Step 2: Multi-Model Training
+    st.subheader("Step 2: Policy Learning - Multi-Model Training")
+    models = {
+        "Logistic Regression": LogisticRegression(max_iter=500),
+        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
+        "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss"),
+        "Neural Network": MLPClassifier(hidden_layer_sizes=(32,16), max_iter=100)
+    }
 
-models["Logistic Regression"].fit(X_train_scaled, y_train)
-models["Random Forest"].fit(X_train, y_train)
-models["XGBoost"].fit(X_train.values, y_train)
-models["Neural Network"].fit(X_train_scaled, y_train)
+    models["Logistic Regression"].fit(X_train_scaled, y_train)
+    models["Random Forest"].fit(X_train, y_train)
+    models["XGBoost"].fit(X_train.values, y_train)
+    models["Neural Network"].fit(X_train_scaled, y_train)
 
-# Step 4: ROC Curves
-print("\n📊 ROC Curve Plot:")
-plt.figure(figsize=(10, 6))
-
-for name, model in models.items():
-    if name in ["Logistic Regression", "Neural Network"]:
-        probs = model.predict_proba(X_test_scaled)[:, 1]
-    else:
-        probs = model.predict_proba(X_test)[:, 1]
-
-    auc = roc_auc_score(y_test, probs)
-    fpr, tpr, _ = roc_curve(y_test, probs)
-    plt.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
-
-plt.plot([0, 1], [0, 1], 'k--')
-plt.title("ROC Curves")
-plt.xlabel("False Positive Rate")
-plt.ylabel("True Positive Rate")
-plt.legend()
-plt.grid(True)
-plt.show()
-
-# Step 5: Feature Importance - Random Forest
-print("\n📈 Feature Importances - Random Forest")
-rf = models["Random Forest"]
-importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
-importances.plot(kind="barh", figsize=(8, 6), title="Random Forest Feature Importances")
-plt.tight_layout()
-plt.show()
-
-# Step 6: SHAP Explanation
-print("\n🔍 SHAP Summary Plot (Random Forest)")
-explainer = shap.TreeExplainer(rf)
-shap_values = explainer.shap_values(X_test)
-
-shap.summary_plot(shap_values[1], X_test, show=True)
-
-# Step 7: Q-Learning Policy Table
-print("\n📘 Q-Learning Policy Table")
-policy_table = pd.DataFrame([
-    [0, "Low (<$5k)", +0.65, -0.15, -0.45],
-    [0, "Medium ($5k–$20k)", +0.30, +0.10, -0.10],
-    [0, "High (>$20k)", -0.20, +0.45, +0.80],
-    [1, "Low (<$5k)", -0.10, +0.40, +0.50],
-    [1, "Medium ($5k–$20k)", -0.30, +0.55, +0.70],
-    [1, "High (>$20k)", -0.60, +0.70, +1.00]
-], columns=["PriorFlag", "AmountBucket", "Approve", "Flag", "Reject"])
-
-display(policy_table)
-
-# Step 8: Human-Readable Explanations
-print("\n🧠 Rule-Based Human Explanations")
-
-def interpret_policy(prior_flag, amount):
-    if prior_flag == 0:
-        if amount < 5000:
-            return f"Low amount ${amount:,.0f}, no prior fraud → likely safe."
-        elif amount < 20000:
-            return f"Moderate amount ${amount:,.0f}, no prior fraud → mixed risk."
+    # ROC Curves
+    st.write("ROC Curves")
+    fig_roc, ax_roc = plt.subplots()
+    for name, model in models.items():
+        if name in ["Logistic Regression", "Neural Network"]:
+            probs = model.predict_proba(X_test_scaled)[:,1]
         else:
-            return f"High amount ${amount:,.0f}, no prior fraud → consider flagging."
-    else:
-        if amount < 5000:
-            return f"Low amount ${amount:,.0f}, but prior fraud → flag it."
-        elif amount < 20000:
-            return f"Moderate amount ${amount:,.0f} with prior fraud → risky."
+            probs = model.predict_proba(X_test)[:,1]
+        fpr, tpr, _ = roc_curve(y_test, probs)
+        auc = roc_auc_score(y_test, probs)
+        ax_roc.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
+    ax_roc.plot([0,1],[0,1],'k--')
+    ax_roc.set_xlabel("False Positive Rate")
+    ax_roc.set_ylabel("True Positive Rate")
+    ax_roc.legend()
+    st.pyplot(fig_roc)
+
+    # Step 3: Interpretability
+    st.subheader("Step 3: Execution Module - Interpretability")
+    rf = models["Random Forest"]
+    importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
+    fig_imp, ax_imp = plt.subplots()
+    importances.plot(kind="barh", ax=ax_imp)
+    st.pyplot(fig_imp)
+
+    st.write("SHAP Summary Plot (Random Forest)")
+    explainer = shap.TreeExplainer(rf)
+    shap_values = explainer.shap_values(X_test)
+    fig_shap = plt.figure()
+    shap.summary_plot(shap_values[1], X_test, show=False)
+    st.pyplot(fig_shap)
+
+    # Step 4: Agentic Q-Value Table
+    st.subheader("Step 4: Planning Module - Q-Learning Policy Table")
+    policy_table = pd.DataFrame([
+        [0, "Low (<$5k)", +0.65, -0.15, -0.45],
+        [0, "Medium ($5k–$20k)", +0.30, +0.10, -0.10],
+        [0, "High (>$20k)", -0.20, +0.45, +0.80],
+        [1, "Low (<$5k)", -0.10, +0.40, +0.50],
+        [1, "Medium ($5k–$20k)", -0.30, +0.55, +0.70],
+        [1, "High (>$20k)", -0.60, +0.70, +1.00]
+    ], columns=["PriorFlag","AmountBucket","Approve","Flag","Reject"])
+    st.dataframe(policy_table)
+
+    # Step 5: Human-Readable Explanations
+    st.subheader("Step 5: Human-Readable Explanations")
+    def interpret_policy(prior_flag, amount):
+        if prior_flag == 0:
+            if amount < 5000:
+                return f"Amount ${amount:,.0f} is low and no prior flag → Approve likely."
+            elif amount < 20000:
+                return f"Amount ${amount:,.0f} is moderate and no prior flag → Mixed signals."
+            else:
+                return f"Amount ${amount:,.0f} is high and no prior flag → Consider Flag or Reject."
         else:
-            return f"High amount ${amount:,.0f} and prior fraud → high fraud risk!"
+            if amount < 5000:
+                return f"Prior fraud and low amount ${amount:,.0f} → Flag advised."
+            elif amount < 20000:
+                return f"Prior fraud and moderate amount ${amount:,.0f} → Likely Flag or Reject."
+            else:
+                return f"Prior fraud and high amount ${amount:,.0f} → Strongly recommend Reject."
 
-sample_cases = df.sample(5, random_state=1)[["Amount", "PriorFlag"]].copy()
-sample_cases["Explanation"] = sample_cases.apply(
-    lambda row: interpret_policy(row["PriorFlag"], row["Amount"]), axis=1)
+    sample_cases = df.sample(5, random_state=0)[["Amount","PriorFlag"]]
+    sample_cases["Explanation"] = sample_cases.apply(lambda row: interpret_policy(row["PriorFlag"], row["Amount"]), axis=1)
+    st.dataframe(sample_cases)
 
-display(sample_cases)
+else:
+    st.info("Please upload a CSV file with the required format.")
 
-print("\n✅ Done. Fraud detection and explanation completed.")
+st.markdown("---")
+st.caption("\u00a9 2025 Agentic AI Research | Enhanced Interpretability & Decision Support")
