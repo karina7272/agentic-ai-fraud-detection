@@ -256,7 +256,7 @@ st.markdown("---")
 st.caption("© 2024 Agentic AI Research | Complete Multi-Model Fraud Detection Pipeline")
 
     # SHAP safe: Use exactly X_test and handle output format
-    st.write("SHAP Summary Plot (Random Forest)")
+st.write("SHAP Summary Plot (Random Forest)")
     explainer = shap.TreeExplainer(rf)
     shap_values = explainer.shap_values(X_test)
 
