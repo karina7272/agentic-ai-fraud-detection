@@ -232,12 +232,12 @@ if uploaded_file:
     plt.close(fig)
 
     # SHAP safe: Use exactly X_test
-    st.write("SHAP Summary Plot (Random Forest)")
-    explainer = shap.TreeExplainer(rf)
+st.write("SHAP Summary Plot (Random Forest)")
+explainer = shap.TreeExplainer(rf)
     shap_values = explainer.shap_values(X_test)
 
     fig_shap = plt.figure()
-    shap.summary_plot(
+shap.summary_plot(
         shap_values[1],
         X_test,
         show=False
@@ -254,23 +254,3 @@ else:
 
 st.markdown("---")
 st.caption("© 2024 Agentic AI Research | Complete Multi-Model Fraud Detection Pipeline")
-
-    # SHAP safe: Use exactly X_test and handle output format
-st.write("SHAP Summary Plot (Random Forest)")
-    explainer = shap.TreeExplainer(rf)
-    shap_values = explainer.shap_values(X_test)
-
-    # Handle binary classification: shap_values could be a list of two arrays
-    if isinstance(shap_values, list) and len(shap_values) == 2:
-        shap_vals_to_plot = shap_values[1]
-    else:
-        shap_vals_to_plot = shap_values
-
-    try:
-        fig_shap = plt.figure()
-        shap.summary_plot(shap_vals_to_plot, X_test, show=False)
-        st.pyplot(fig_shap)
-        plt.close(fig_shap)
-    except AssertionError as e:
-        st.warning("SHAP summary plot failed due to shape mismatch. Try using a smaller or balanced sample.")
-        st.text(f"Error: {str(e)}")
