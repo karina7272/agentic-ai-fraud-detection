@@ -7,250 +7,159 @@ Original file is located at
     https://colab.research.google.com/drive/1inCIg9OqOxapjAvYeTRMi23REbWwiZSN
 """
 
-# Agentic AI Fraud Detection Application
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix
 import matplotlib.pyplot as plt
-import xgboost as xgb
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import roc_auc_score, confusion_matrix
+from xgboost import XGBClassifier
 import shap
 
-# Page config
-st.set_page_config(
-    page_title="Agentic AI Fraud Detection",
-    layout="wide"
-)
-
-# Custom CSS
-st.markdown("""
-<style>
-.stApp {background-color: #eaf4fb; padding-top:70px;}
-.header-logo {position: fixed; top:10px; left:10px; z-index:999;}
-.css-18e3th9 {background-color: rgba(255,255,255,0.95); padding:1rem; border-radius:0.5rem;}
-h1, h2, h3 {color:#2c3e50;}
-</style>
-<div class="header-logo">
-    <img src="https://cdn-icons-png.flaticon.com/512/3379/3379050.png" width="50"/>
-</div>
-""", unsafe_allow_html=True)
-
-st.title("Agentic AI Fraud Detection Application")
+# Set Streamlit layout
+st.set_page_config(layout="wide")
+st.title("🧠 Agentic AI Fraud Detection Application")
 st.markdown("**Empowering Accountants with Explainable AI for Fraud Detection**")
 
-uploaded_file = st.file_uploader(
-    "Upload your CSV file (Columns: EntryID, Amount, VendorCategory, DayOfMonth, PriorFlag, IsFraud)",
-    type="csv"
-)
-
+# Upload CSV
+uploaded_file = st.file_uploader("Upload a CSV file (Columns: EntryID, Amount, VendorCategory, DayOfMonth, PriorFlag, IsFraud)", type="csv")
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.subheader("Raw Data Sample")
     st.dataframe(df.head())
 
-    # ----------------------------
+    # Step 1: Perception - Preprocessing
     st.subheader("Step 1: Perception Module - Data Preprocessing")
+    df["PriorFlag"] = df["PriorFlag"].astype(int)
+    df["IsFraud"] = df["IsFraud"].astype(int)
+    df["VendorCode"] = LabelEncoder().fit_transform(df["VendorCategory"])
+    df["Prior_Vendor"] = df["VendorCode"] * df["PriorFlag"]
 
-    # Class Balance
-    fig, ax = plt.subplots()
-    df["IsFraud"].value_counts().plot(kind="bar", color=["#3498db","#e74c3c"], ax=ax)
-    ax.set_title("Fraud vs Non-Fraud Counts")
-    ax.set_ylabel("Count")
-    ax.set_xticklabels(["Non-Fraud","Fraud"], rotation=0)
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # Amount Distribution
-    fig, ax = plt.subplots()
-    for label in [0,1]:
-        subset = df[df["IsFraud"]==label]["Amount"]
-        ax.hist(subset, bins=50, alpha=0.5, label="Fraud" if label==1 else "Non-Fraud")
-    ax.set_xlabel("Transaction Amount ($)")
-    ax.set_ylabel("Frequency")
-    ax.legend()
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # Feature Engineering
-    bins = [0,1000,5000,10000,20000,50000]
-    labels_bins = ["<$1k","$1k-5k","$5k-10k","$10k-20k","$20k-50k"]
+    bins = [0, 1000, 5000, 10000, 20000, 50000]
+    labels_bins = ["$1k-5k", "$5k-10k", "$10k-20k", "$20k-50k"]
     df["AmountBucket"] = pd.cut(df["Amount"], bins=bins, labels=labels_bins)
-    df["VendorCode"] = df["VendorCategory"].astype("category").cat.codes
-    df = pd.get_dummies(df, columns=["AmountBucket"], drop_first=False)
-    df["Prior_Vendor"] = df["PriorFlag"] * df["VendorCode"]
-    feature_cols = ["Amount","DayOfMonth","PriorFlag","VendorCode","Prior_Vendor"] + \
-        [c for c in df.columns if c.startswith("AmountBucket_")]
-    X = df[feature_cols]
-    y = df["IsFraud"]
 
-    # Train/Test Split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, stratify=y, test_size=0.2, random_state=42
-    )
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    features = ["Amount", "DayOfMonth", "VendorCode", "Prior_Vendor", "PriorFlag"] + pd.get_dummies(df["AmountBucket"]).columns.tolist()
+    df = pd.concat([df, pd.get_dummies(df["AmountBucket"], prefix="AmountBucket")], axis=1)
 
-    # ----------------------------
+    # Step 2: Policy Learning
     st.subheader("Step 2: Policy Learning - Multi-Model Training")
+    st.markdown("Training Logistic Regression, Random Forest, XGBoost, Neural Network")
 
-    st.write("Training Logistic Regression, Random Forest, XGBoost, Neural Network")
+    X = df[features]
+    y = df["IsFraud"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Logistic Regression
-    lr = LogisticRegression(max_iter=500)
-    lr.fit(X_train_scaled, y_train)
-
-    # Random Forest
-    rf = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf.fit(X_train, y_train)
-
-    # XGBoost: convert to numeric arrays to avoid errors
-    X_train_np = X_train.values
-    X_test_np = X_test.values
-
-    xgb_model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss")
-    xgb_model.fit(X_train_np, y_train)
-
-    # Neural Network
-    nn = MLPClassifier(hidden_layer_sizes=(32,16), max_iter=100)
-    nn.fit(X_train_scaled, y_train)
-
-    # Predictions
-    lr_probs = lr.predict_proba(X_test_scaled)[:,1]
-    rf_probs = rf.predict_proba(X_test)[:,1]
-    xgb_probs = xgb_model.predict_proba(X_test_np)[:,1]
-    nn_probs = nn.predict_proba(X_test_scaled)[:,1]
-
-    lr_pred = lr.predict(X_test_scaled)
-    rf_pred = rf.predict(X_test)
-    xgb_pred = xgb_model.predict(X_test_np)
-    nn_pred = nn.predict(X_test_scaled)
-
-    # ROC Curves
-    fig, ax = plt.subplots(figsize=(8,6))
-    for name, probs in zip(
-        ["Logistic Regression","Random Forest","XGBoost","Neural Network"],
-        [lr_probs, rf_probs, xgb_probs, nn_probs]
-    ):
-        fpr, tpr, _ = roc_curve(y_test, probs)
-        auc = roc_auc_score(y_test, probs)
-        ax.plot(fpr, tpr, label=f"{name} (AUC={auc:.3f})")
-    ax.plot([0,1],[0,1],"k--")
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
-    ax.legend()
-    ax.set_title("ROC Curves")
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # Confusion Matrices
-    st.write("Confusion Matrices")
-    models_preds = {
-        "Logistic Regression": lr_pred,
-        "Random Forest": rf_pred,
-        "XGBoost": xgb_pred,
-        "Neural Network": nn_pred
+    models = {
+        "Logistic Regression": LogisticRegression(max_iter=1000),
+        "Random Forest": RandomForestClassifier(n_estimators=100),
+        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+        "Neural Network": MLPClassifier(hidden_layer_sizes=(50,), max_iter=500)
     }
-    fig, axes = plt.subplots(2,2, figsize=(12,10))
-    axes = axes.flatten()
-    for ax, (name, preds) in zip(axes, models_preds.items()):
-        cm = confusion_matrix(y_test, preds)
-        im = ax.imshow(cm, cmap="Blues")
-        ax.set_title(name, fontsize=12, pad=10)
-        ax.set_xlabel("Predicted", labelpad=10)
-        ax.set_ylabel("Actual", labelpad=10)
-        ax.set_xticks([0,1])
-        ax.set_yticks([0,1])
-        ax.set_xticklabels(["Non-Fraud","Fraud"])
-        ax.set_yticklabels(["Non-Fraud","Fraud"])
-        for i in range(2):
-            for j in range(2):
-                ax.text(j,i,cm[i,j],ha="center",va="center",color="black",fontsize=11)
-    fig.tight_layout()
-    fig.colorbar(im, ax=axes, shrink=0.6)
+
+    confusion_matrices = {}
+    auc_scores = {}
+
+    for name, model in models.items():
+        try:
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            auc = roc_auc_score(y_test, y_pred)
+            auc_scores[name] = auc
+            confusion_matrices[name] = confusion_matrix(y_test, y_pred)
+        except Exception as e:
+            st.warning(f"{name} failed: {str(e)}")
+
+    # Plot Confusion Matrices
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    axs = axs.flatten()
+    for i, (name, cm) in enumerate(confusion_matrices.items()):
+        sns.heatmap(cm, annot=True, fmt="d", ax=axs[i], cmap="Blues")
+        axs[i].set_title(name)
+        axs[i].set_xlabel("Predicted")
+        axs[i].set_ylabel("Actual")
+    plt.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
 
-    # ----------------------------
-    st.subheader("Step 3: Planning Module - Q-Learning Policy")
-
-    df["AmountBin"] = pd.cut(df["Amount"], bins=bins, labels=labels_bins)
+    # Step 3: Planning Module
+    st.subheader("Step 3: Planning Module - Q-Learning Policy (Optimized)")
+    df_q = df.sample(n=2000, random_state=42).copy()
+    df_q["AmountBin"] = pd.cut(df_q["Amount"], bins=bins, labels=labels_bins)
     state_space = pd.MultiIndex.from_product(
-        [df["PriorFlag"].unique(), df["AmountBin"].unique()],
-        names=["PriorFlag","AmountBin"]
+        [df_q["PriorFlag"].unique(), df_q["AmountBin"].unique()],
+        names=["PriorFlag", "AmountBin"]
     )
-    q_table = pd.DataFrame(0.0, index=state_space, columns=["Approve","Flag","Reject"])
+    q_table = pd.DataFrame(0.0, index=state_space, columns=["Approve", "Flag", "Reject"])
     alpha, gamma, eps = 0.1, 0.9, 0.2
 
-    for episode in range(5):
-        for _, row in df.iterrows():
+    for _ in range(2):
+        for _, row in df_q.iterrows():
             state = (row["PriorFlag"], row["AmountBin"])
-            if np.random.rand()<eps:
-                action = np.random.choice(["Approve","Flag","Reject"])
+            if pd.isnull(state[1]):
+                continue
+            if np.random.rand() < eps:
+                action = np.random.choice(["Approve", "Flag", "Reject"])
             else:
                 action = q_table.loc[state].idxmax()
-            if action=="Flag" and row["IsFraud"]:
-                r=+1
-            elif action=="Approve" and row["IsFraud"]:
-                r=-1
-            elif action=="Flag" and not row["IsFraud"]:
-                r=-0.5
-            else:
-                r=0
-            max_q = q_table.loc[state].max()
-            old_q = q_table.loc[state, action]
-            q_table.loc[state, action] = old_q + alpha*(r + gamma*max_q - old_q)
 
-    pivot = q_table["Flag"].unstack()
-    fig, ax = plt.subplots(figsize=(6,6))
-    c = ax.imshow(pivot, cmap="viridis")
+            if action == "Flag" and row["IsFraud"]:
+                reward = 1
+            elif action == "Approve" and row["IsFraud"]:
+                reward = -1
+            elif action == "Flag" and not row["IsFraud"]:
+                reward = -0.5
+            else:
+                reward = 0
+
+            old_q = q_table.loc[state, action]
+            future_q = q_table.loc[state].max()
+            new_q = old_q + alpha * (reward + gamma * future_q - old_q)
+            q_table.loc[state, action] = new_q
+
+    heatmap_data = q_table["Flag"].unstack()
+    fig, ax = plt.subplots(figsize=(6, 6))
+    cax = ax.imshow(heatmap_data, cmap="Blues")
     ax.set_title("Q-Value Heatmap (Flag Action)")
     ax.set_xlabel("PriorFlag")
     ax.set_ylabel("AmountBin")
-    ax.set_xticks([0,1])
-    ax.set_yticks(range(len(labels_bins)))
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["No Prior", "Prior"])
+    ax.set_yticks(np.arange(len(labels_bins)))
     ax.set_yticklabels(labels_bins)
-    fig.colorbar(c, ax=ax, label="Q-Value")
+    fig.colorbar(cax, ax=ax, label="Q-Value")
     st.pyplot(fig)
     plt.close(fig)
 
-    # ----------------------------
+    # Step 4: Execution - Interpretability
     st.subheader("Step 4: Execution Module - Interpretability")
+    rf_model = models.get("Random Forest")
+    if rf_model:
+        importances = rf_model.feature_importances_
+        indices = np.argsort(importances)[::-1]
+        fig, ax = plt.subplots()
+        ax.barh(np.array(features)[indices], importances[indices])
+        ax.set_title("Random Forest Feature Importances")
+        ax.invert_yaxis()
+        st.pyplot(fig)
+        plt.close(fig)
 
-    st.write("Random Forest Feature Importance")
-    importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values()
-    fig, ax = plt.subplots()
-    importances.plot(kind="barh", ax=ax)
-    ax.set_title("Feature Importances")
-    st.pyplot(fig)
-    plt.close(fig)
+        try:
+            explainer = shap.TreeExplainer(rf_model)
+            shap_values = explainer.shap_values(X_test)
+            st.set_option("deprecation.showPyplotGlobalUse", False)
+            st.markdown("SHAP Summary Plot (Random Forest)")
+            shap.summary_plot(shap_values[1], X_test, show=False)
+            st.pyplot(bbox_inches='tight')
+        except Exception as e:
+            st.warning(f"SHAP plot failed: {str(e)}")
 
-    # SHAP safe: Use exactly X_test
-    st.write("SHAP Summary Plot (Random Forest)")
-    explainer = shap.TreeExplainer(rf)
-    shap_values = explainer.shap_values(X_test)
-
-    fig_shap = plt.figure()
-    shap.summary_plot(
-        shap_values[1],
-        X_test,
-        show=False
-    )
-    st.pyplot(fig_shap)
-    plt.close(fig_shap)
-
-    # AI Action Next Steps
-    st.subheader("AI Action Next Steps for Auditors")
-    st.image("https://i.imgur.com/UCFlBQr.png", caption="AI Action → Auditor Next Steps")
-
-else:
-    st.info("Awaiting CSV file upload.")
-
-st.markdown("---")
-st.caption("© 2024 Agentic AI Research | Complete Multi-Model Fraud Detection Pipeline")
+    # AI Action Diagram
+    st.markdown("### AI Action → Auditor Next Steps")
+    st.image("https://raw.githubusercontent.com/karinakast/agentic-ai-fraud-detection/main/auditor_decision_flow.png", caption="AI Action to Auditor Follow-up Diagram")
